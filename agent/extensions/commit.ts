@@ -216,6 +216,15 @@ export default function (pi: ExtensionAPI) {
 					editor = "vi";
 				}
 
+				// Validate editor exists before spawning zellij
+				const editorBase = editor.split(/\s+/)[0]; // Handle "code --wait" case
+				const editorCheck = await pi.exec("which", [editorBase], { timeout: 5000 });
+				if (editorCheck.code !== 0) {
+					ctx.ui.notify(`Editor '${editorBase}' not found in PATH`, "error");
+					await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+					return;
+				}
+
 				ctx.ui.notify(`Opening editor (${editor}) in new zellij pane...`, "info");
 
 				// Handle editors with arguments (e.g., "code --wait" or "vim -g")
@@ -233,6 +242,7 @@ export default function (pi: ExtensionAPI) {
 
 				if (zellijResult.code !== 0) {
 					ctx.ui.notify("Failed to open zellij pane", "error");
+					await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 					return;
 				}
 
@@ -255,6 +265,10 @@ export default function (pi: ExtensionAPI) {
 
 				if (!markerExists) {
 					ctx.ui.notify("Editor timed out (5 minutes)", "error");
+					ctx.ui.notify(
+						`Commit message preserved at: ${commitMsgFile}`,
+						"info",
+					);
 					return;
 				}
 
@@ -264,6 +278,7 @@ export default function (pi: ExtensionAPI) {
 
 				if (!editedMessage) {
 					ctx.ui.notify("Commit aborted: empty message", "info");
+					await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 					return;
 				}
 
@@ -282,19 +297,30 @@ export default function (pi: ExtensionAPI) {
 						const firstLine = editedMessage.split("\n")[0];
 						ctx.ui.notify(`${hashResult.stdout.trim()}: ${firstLine}`, "info");
 					}
+
+					// Cleanup temp files on success
+					try {
+						await fs.rm(tmpDir, { recursive: true, force: true });
+					} catch {
+						// Ignore cleanup errors
+					}
 				} else {
 					ctx.ui.notify(
 						`Commit failed: ${commitResult.stderr || commitResult.stdout || "unknown error"}`,
 						"error",
 					);
+					ctx.ui.notify(
+						`Commit message preserved at: ${commitMsgFile}`,
+						"info",
+					);
 				}
-			} finally {
-				// Cleanup temp file
-				try {
-					await fs.rm(tmpDir, { recursive: true, force: true });
-				} catch {
-					// Ignore cleanup errors
-				}
+			} catch (error) {
+				// On unexpected error, leave temp files for recovery
+				ctx.ui.notify(`Error: ${error instanceof Error ? error.message : String(error)}`, "error");
+				ctx.ui.notify(
+					`Commit message preserved at: ${commitMsgFile}`,
+					"info",
+				);
 			}
 		},
 	});
