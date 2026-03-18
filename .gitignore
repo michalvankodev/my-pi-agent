@@ -1,0 +1,29 @@
+# Sensitive credentials - NEVER commit
+agent/auth.json
+
+# Transient session data (per-project, auto-generated, can be large)
+agent/sessions/
+
+# Debug logs
+agent/*-debug.log
+
+# Managed binaries (fd, rg, etc.) - can be reinstalled
+agent/bin/
+
+# Git-installed packages (pi install git:...) - can be reinstalled
+agent/git/
+
+# NPM-installed packages (project-local) - can be reinstalled
+agent/npm/
+
+# Extension backup files
+agent/extensions/*.v*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~

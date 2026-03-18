@@ -1,0 +1,107 @@
+{
+  "enabled": true,
+  "features": {
+    "policies": true,
+    "permissionGate": true
+  },
+  "permissionGate": {
+    "patterns": [
+      {
+        "pattern": "rm -rf",
+        "description": "recursive force delete",
+        "regex": true
+      },
+      {
+        "pattern": "sudo",
+        "description": "superuser command",
+        "regex": true
+      },
+      {
+        "pattern": "dd if=",
+        "description": "disk dump - can overwrite disks",
+        "regex": true
+      },
+      {
+        "pattern": "mkfs.",
+        "description": "format filesystem",
+        "regex": true
+      },
+      {
+        "pattern": "chmod -R 777",
+        "description": "insecure permissions",
+        "regex": true
+      },
+      {
+        "pattern": "chown -R",
+        "description": "recursive ownership change",
+        "regex": true
+      },
+      {
+        "pattern": "git push --force",
+        "description": "force push - overwrites remote history",
+        "regex": true
+      },
+      {
+        "pattern": "git push -f",
+        "description": "force push - overwrites remote history",
+        "regex": true
+      },
+      {
+        "pattern": "git reset --hard",
+        "description": "hard reset - discards all uncommitted changes",
+        "regex": true
+      },
+      {
+        "pattern": "git clean -fd",
+        "description": "removes untracked files and directories",
+        "regex": true
+      },
+      {
+        "pattern": "git clean -f",
+        "description": "removes untracked files",
+        "regex": true
+      },
+      {
+        "pattern": "git branch -D",
+        "description": "force delete branch",
+        "regex": true
+      },
+      {
+        "pattern": "git stash drop",
+        "description": "discards stashed changes",
+        "regex": true
+      },
+      {
+        "pattern": "git checkout --",
+        "description": "discards working directory changes",
+        "regex": true
+      },
+      {
+        "pattern": "git checkout HEAD --",
+        "description": "discards working directory changes",
+        "regex": true
+      },
+      {
+        "pattern": "git rebase",
+        "description": "rebase - rewrites commit history",
+        "regex": true
+      },
+      {
+        "pattern": "git filter-branch",
+        "description": "rewrites entire branch history",
+        "regex": true
+      },
+      {
+        "pattern": "git reflog expire",
+        "description": "expires reflog entries permanently",
+        "regex": true
+      }
+    ],
+    "customPatterns": [],
+    "requireConfirmation": true,
+    "allowedPatterns": [],
+    "autoDenyPatterns": [],
+    "explainCommands": false
+  },
+  "version": "0.8.0-20260228"
+}

@@ -1,0 +1,23 @@
+{
+  "lastChangelogVersion": "0.60.0",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "glm-5",
+  "defaultThinkingLevel": "medium",
+  "steeringMode": "one-at-a-time",
+  "followUpMode": "one-at-a-time",
+  "transport": "auto",
+  "theme": "light",
+  "tools": [
+    "read",
+    "bash",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls"
+  ],
+  "packages": [
+    "npm:@aliou/pi-guardrails",
+    "npm:pi-answer"
+  ]
+}
