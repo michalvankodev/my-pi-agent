@@ -18,6 +18,7 @@
   ],
   "packages": [
     "npm:@aliou/pi-guardrails",
-    "npm:pi-answer"
+    "npm:pi-answer",
+    "npm:lsp-pi"
   ]
 }
