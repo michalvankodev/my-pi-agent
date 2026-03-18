@@ -19,6 +19,8 @@
   "packages": [
     "npm:@aliou/pi-guardrails",
     "npm:pi-answer",
-    "npm:lsp-pi"
+    "npm:lsp-pi",
+    "npm:pi-web-access",
+    "npm:tau-mirror"
   ]
 }
