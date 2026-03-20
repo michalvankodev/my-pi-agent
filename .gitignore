@@ -1,5 +1,6 @@
 # Sensitive credentials - NEVER commit
 agent/auth.json
+web-search.json
 
 # Transient session data (per-project, auto-generated, can be large)
 agent/sessions/

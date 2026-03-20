@@ -21,6 +21,10 @@
     "npm:pi-answer",
     "npm:lsp-pi",
     "npm:pi-web-access",
-    "npm:tau-mirror"
-  ]
+    "npm:tau-mirror",
+    "npm:pi-file-watcher"
+  ],
+  "flags": {
+    "--marker": "pi!"
+  }
 }
