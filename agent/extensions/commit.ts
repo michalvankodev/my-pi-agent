@@ -22,8 +22,10 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { complete, type UserMessage } from "@mariozechner/pi-ai";
-import { BorderedLoader } from "@mariozechner/pi-coding-agent";
+import { completeSimple, getModel, type UserMessage } from "@mariozechner/pi-ai";
+import type { Model, Api, ThinkingLevel } from "@mariozechner/pi-ai";
+import { BorderedLoader, getAgentDir } from "@mariozechner/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -51,6 +53,56 @@ Output ONLY the commit message, nothing else. Do not include code blocks or mark
 
 const MAX_DIFF_SIZE = 50000; // ~50KB max diff to send to LLM
 const MAX_SESSION_MESSAGES = 10; // Last N user messages to include
+
+/**
+ * Commit extension configuration.
+ * Loaded from ~/.pi/agent/extensions/commit.json (optional)
+ *
+ * All fields are optional - defaults to session's current model and thinking level.
+ */
+interface CommitConfig {
+	/** Model to use for commit message generation. Format: "provider/modelId". Default: session model */
+	model?: string;
+	/** Thinking level for reasoning models. Default: session's current thinking level */
+	thinkingLevel?: ThinkingLevel;
+}
+
+/**
+ * Load commit extension configuration.
+ * Returns empty object if config file doesn't exist or is invalid.
+ */
+function loadConfig(): CommitConfig {
+	const configPath = path.join(getAgentDir(), "extensions", "commit.json");
+	if (!existsSync(configPath)) return {};
+
+	try {
+		const content = readFileSync(configPath, "utf-8");
+		return JSON.parse(content) as CommitConfig;
+	} catch (err) {
+		console.error(`[commit] Failed to load config from ${configPath}:`, err);
+		return {};
+	}
+}
+
+/**
+ * Parse model specification and return Model object.
+ * Format: "provider/modelId" or just "modelId" (searches all providers).
+ */
+function parseModelSpec(spec: string): Model<Api> | null {
+	const parts = spec.split("/");
+	if (parts.length === 2) {
+		const [provider, modelId] = parts;
+		try {
+			return getModel(provider as any, modelId as any);
+		} catch {
+			return null;
+		}
+	}
+
+	// Just modelId - search across providers (getModel doesn't support this, so return null)
+	// The caller will fall back to ctx.model
+	return null;
+}
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("commit", {
@@ -147,27 +199,40 @@ export default function (pi: ExtensionAPI) {
 				prompt += "Additional context provided by user:\n" + additionalContext + "\n\n";
 			}
 
+			// Load config and determine model to use
+			const config = loadConfig();
+			const commitModel = config.model ? parseModelSpec(config.model) : null;
+			const model = commitModel ?? ctx.model!;
+
+			if (!model) {
+				ctx.ui.notify("No model available", "error");
+				return;
+			}
+
+			// Default to session's thinking level if not specified in config
+			const thinkingLevel = config.thinkingLevel ?? pi.getThinkingLevel();
+
 			// Generate commit message using LLM
 			const commitMessage = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
 				const loader = new BorderedLoader(
 					tui,
 					theme,
-					`Generating commit message using ${ctx.model!.id}...`,
+					`Generating commit message using ${model.id}${thinkingLevel !== "off" ? ` (${thinkingLevel})` : ""}...`,
 				);
 				loader.onAbort = () => done(null);
 
 				const generate = async () => {
-					const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
+					const apiKey = await ctx.modelRegistry.getApiKey(model);
 					const userMessage: UserMessage = {
 						role: "user",
 						content: [{ type: "text", text: prompt }],
 						timestamp: Date.now(),
 					};
 
-					const response = await complete(
-						ctx.model!,
+					const response = await completeSimple(
+						model,
 						{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
-						{ apiKey, signal: loader.signal },
+						{ apiKey, signal: loader.signal, reasoning: thinkingLevel !== "off" ? thinkingLevel : undefined },
 					);
 
 					if (response.stopReason === "aborted") {
