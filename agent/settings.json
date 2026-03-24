@@ -19,12 +19,17 @@
   "packages": [
     "npm:@aliou/pi-guardrails",
     "npm:pi-answer",
-    "npm:lsp-pi",
     "npm:pi-web-access",
     "npm:tau-mirror",
-    "npm:pi-file-watcher"
+    "npm:pi-file-watcher",
+    "npm:pi-powerline-footer",
+    "npm:@codexstar/pi-pompom",
+    "npm:pi-subagents"
   ],
   "flags": {
     "--marker": "pi!"
-  }
+  },
+  "powerline": "default",
+  "workingVibe": "warcraft",
+  "workingVibeModel": "opencode-go/kimi-k2.5"
 }

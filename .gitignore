@@ -31,3 +31,9 @@ Thumbs.db
 
 # Tau instances (runtime instance tracking)
 tau-instances/
+
+# Session history
+history/
+
+# Pompom folder
+pompom/
