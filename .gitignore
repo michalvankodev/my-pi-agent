@@ -37,3 +37,6 @@ history/
 
 # Pompom folder
 pompom/
+
+# Team session management (pi-teams extension)
+teams/
