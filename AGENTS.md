@@ -32,6 +32,23 @@ This repository is a **public setup template** for sharing pi agent configuratio
 - `prompts/*.md` - Prompt templates
 - `agents/*.md` - Subagent definitions
 
+## Custom Extensions
+
+Extensions are TypeScript modules in `~/.pi/agent/extensions/` that extend pi's behavior. They can:
+- Register custom commands (e.g., `/commit`)
+- Add custom tools callable by the LLM
+- Subscribe to lifecycle events
+- Configure per-command settings via JSON config files
+
+See pi's `docs/extensions.md` and `examples/extensions/` for the full API.
+
+### Installed Extensions
+
+| Extension | Description | Config |
+|-----------|-------------|--------|
+| `commit.ts` | `/commit` - Generates conventional commit messages from staged changes using LLM, opens editor in zellij pane for review | `commit.json` (model, thinkingLevel) |
+| `guardrails` (npm:@aliou/pi-guardrails) | Permission gate for dangerous commands (rm -rf, sudo, git force push, etc.) - prompts for confirmation before execution | `guardrails.json` (patterns, enabled features) |
+
 ## Adding New Plugins
 
 Before committing:
