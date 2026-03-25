@@ -1,0 +1,24 @@
+# Development Teams
+# Each team defines a workflow with specialized agents
+
+# Standard development flow: scout→planner→worker→reviewer
+full-dev:
+  - scout
+  - planner
+  - worker
+  - reviewer
+
+# Quick iteration: plan and build only
+plan-build:
+  - planner
+  - worker
+
+# Code review workflow: build then review
+build-review:
+  - worker
+  - reviewer
+
+# Research and analysis only (no code changes)
+research:
+  - scout
+  - planner

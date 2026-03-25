@@ -23,13 +23,13 @@
     "npm:tau-mirror",
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
-    "npm:@codexstar/pi-pompom",
-    "npm:pi-subagents"
+    "npm:pi-teams"
   ],
   "flags": {
     "--marker": "pi!"
   },
   "powerline": "default",
   "workingVibe": "warcraft",
-  "workingVibeModel": "opencode-go/kimi-k2.5"
+  "workingVibeModel": "opencode-go/kimi-k2.5",
+  "quietStartup": true
 }

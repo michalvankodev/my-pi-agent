@@ -19,6 +19,14 @@ What was done.
 ## Notes (if any)
 Anything the main agent should know.
 
+## Spec Update (if specification was provided)
+If your instructions included a specification file path, update that file with:
+- Add "## Implementation Summary" section containing:
+  - What was implemented
+  - Files changed and why
+  - Any deviations from the plan and rationale
+  - Anything blocked or remaining
+
 If handing off to another agent (e.g. reviewer), include:
 - Exact file paths changed
 - Key functions/types touched (short list)
