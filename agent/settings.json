@@ -23,13 +23,12 @@
     "npm:tau-mirror",
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
-    "npm:pi-teams"
+    "/home/michalvanko/Projects/pi-interactive-subagents"
   ],
   "flags": {
     "--marker": "pi!"
   },
   "powerline": "default",
-  "workingVibe": "warcraft",
   "workingVibeModel": "opencode-go/kimi-k2.5",
   "quietStartup": true
 }
