@@ -1,6 +1,6 @@
 {
   "lastChangelogVersion": "0.64.0",
-  "defaultProvider": "opencode",
+  "defaultProvider": "opencode-go",
   "defaultModel": "glm-5",
   "defaultThinkingLevel": "medium",
   "steeringMode": "one-at-a-time",
