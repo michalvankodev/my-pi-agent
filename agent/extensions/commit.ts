@@ -2,7 +2,7 @@
  * Git Commit Extension
  *
  * Generates conventional commit messages using LLM and opens git editor for review
- * in a new zellij pane.
+ * in a new zellij pane. Non-blocking - returns immediately so you can continue working.
  *
  * Usage:
  *   /commit                    - Generate commit message from staged changes + session context
@@ -12,11 +12,10 @@
  *
  * The command:
  * 1. Checks for staged changes (fails if none)
- * 2. Gets git diff of staged changes
- * 3. Extracts relevant context from session messages
- * 4. Generates a conventional commit message using LLM
- * 5. Spawns a new zellij pane with $EDITOR for review
- * 6. Commits after editor closes (unless message was emptied)
+ * 2. Returns immediately (non-blocking)
+ * 3. Generates commit message in background using LLM
+ * 4. Spawns a new zellij pane with $EDITOR when ready
+ * 5. Commits after editor closes (unless message was emptied)
  *
  * Requirements:
  * - zellij (terminal multiplexer)
@@ -26,7 +25,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { completeSimple, getModel, type UserMessage } from "@mariozechner/pi-ai";
 import type { Model, Api, ThinkingLevel } from "@mariozechner/pi-ai";
-import { BorderedLoader, getAgentDir } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -197,7 +196,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// Handle --reuse mode
+			// Handle --reuse mode - spawn editor immediately with existing message
 			if (reuse) {
 				const staleDir = await findStaleCommitDir();
 				if (!staleDir) {
@@ -205,7 +204,11 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 				ctx.ui.notify(`Reusing stale commit message from: ${staleDir}`, "info");
-				await openEditorAndCommit(pi, ctx, staleDir);
+				// Run in background - don't await
+				openEditorAndCommit(pi, ctx, staleDir).catch((err) => {
+					console.error("Commit error:", err);
+					ctx.ui.notify(`Commit error: ${err.message}`, "error");
+				});
 				return;
 			}
 
@@ -271,62 +274,66 @@ export default function (pi: ExtensionAPI) {
 			// Default to session's thinking level if not specified in config
 			const thinkingLevel = config.thinkingLevel ?? pi.getThinkingLevel();
 
-			// Generate commit message using LLM
-			const commitMessage = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-				const loader = new BorderedLoader(
-					tui,
-					theme,
-					`Generating commit message using ${model.id}${thinkingLevel !== "off" ? ` (${thinkingLevel})` : ""}...`,
-				);
-				loader.onAbort = () => done(null);
+			// Start commit workflow in background - handler returns immediately
+			ctx.ui.notify(`Generating commit message using ${model.id}${thinkingLevel !== "off" ? ` (${thinkingLevel})` : ""}...`, "info");
 
-				const generate = async () => {
-					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-					if (!auth.ok) throw new Error(auth.error);
-					const userMessage: UserMessage = {
-						role: "user",
-						content: [{ type: "text", text: prompt }],
-						timestamp: Date.now(),
-					};
-
-					const response = await completeSimple(
-						model,
-						{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
-						{ apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal, reasoning: thinkingLevel !== "off" ? thinkingLevel : undefined },
-					);
-
-					if (response.stopReason === "aborted") {
-						return null;
-					}
-
-					return response.content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text)
-						.join("\n");
-				};
-
-				generate()
-					.then(done)
-					.catch((err) => {
-						console.error("Commit generation error:", err);
-						done(null);
-					});
-
-				return loader;
+			generateAndCommit(pi, ctx, model, thinkingLevel, prompt).catch((err) => {
+				console.error("Commit workflow error:", err);
+				ctx.ui.notify(`Commit error: ${err.message}`, "error");
 			});
-
-			if (commitMessage === null) {
-				ctx.ui.notify("Cancelled", "info");
-				return;
-			}
-
-			// Create temp files for commit message and sync marker
-			const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), COMMIT_TMP_PREFIX));
-			const commitMsgFile = path.join(tmpDir, "COMMIT_EDITMSG");
-			await fs.writeFile(commitMsgFile, commitMessage + "\n");
-			await openEditorAndCommit(pi, ctx, tmpDir);
 		},
 	});
+}
+
+/**
+ * Generate commit message and spawn editor (runs in background, non-blocking).
+ */
+async function generateAndCommit(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	model: Model<Api>,
+	thinkingLevel: ThinkingLevel,
+	prompt: string,
+): Promise<void> {
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok) throw new Error(auth.error);
+
+	const userMessage: UserMessage = {
+		role: "user",
+		content: [{ type: "text", text: prompt }],
+		timestamp: Date.now(),
+	};
+
+	const response = await completeSimple(
+		model,
+		{ systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
+		{ apiKey: auth.apiKey, headers: auth.headers, reasoning: thinkingLevel !== "off" ? thinkingLevel : undefined },
+	);
+
+	if (response.stopReason === "aborted") {
+		ctx.ui.notify("Commit generation cancelled", "info");
+		return;
+	}
+
+	const commitMessage = response.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text")
+		.map((c) => c.text)
+		.join("\n");
+
+	if (!commitMessage.trim()) {
+		ctx.ui.notify("Generated empty commit message", "error");
+		return;
+	}
+
+	// Create temp files for commit message
+	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), COMMIT_TMP_PREFIX));
+	const commitMsgFile = path.join(tmpDir, "COMMIT_EDITMSG");
+	await fs.writeFile(commitMsgFile, commitMessage + "\n");
+
+	ctx.ui.notify("Commit message generated, opening editor...", "info");
+
+	// Spawn editor and wait for commit
+	await openEditorAndCommit(pi, ctx, tmpDir);
 }
 
 /**

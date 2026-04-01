@@ -7,6 +7,7 @@ agent/sessions/
 
 # Debug logs
 agent/*-debug.log
+agent/*-crash.log
 
 # Managed binaries (fd, rg, etc.) - can be reinstalled
 agent/bin/
