@@ -40,15 +40,8 @@ import * as path from "node:path";
 
 const MAX_DIFF_SIZE = 50000; // ~50KB max diff to send to LLM
 const MAX_SESSION_MESSAGES = 10; // Last N user messages to include as context
+const MAX_MESSAGE_LENGTH = 500; // Truncate each user message to this many chars
 const COMMIT_TMP_PREFIX = "pi-commit-";
-
-/**
- * Commit extension configuration (legacy commit.json fallback).
- */
-interface CommitConfig {
-	model?: string;
-	thinkingLevel?: string;
-}
 
 /**
  * Parse simple YAML-like frontmatter from a string.
@@ -126,7 +119,7 @@ Output ONLY the commit message, nothing else. Do not include code blocks or mark
 	if (existsSync(jsonPath)) {
 		try {
 			const raw = readFileSync(jsonPath, "utf-8");
-			const config = JSON.parse(raw) as CommitConfig;
+			const config = JSON.parse(raw) as { model?: string; thinkingLevel?: string };
 			return {
 				model: config.model,
 				thinking: config.thinkingLevel,
@@ -157,7 +150,7 @@ function extractSessionContext(ctx: ExtensionContext): string {
 					.filter((c: { type: string; text?: string }): c is { type: "text"; text: string } => c.type === "text")
 					.map((c) => c.text);
 				if (textParts.length > 0) {
-					recentMessages.unshift(textParts.join("\n"));
+					recentMessages.unshift(textParts.join("\n").substring(0, MAX_MESSAGE_LENGTH));
 					messageCount++;
 				}
 			}
@@ -226,27 +219,13 @@ export default function (pi: ExtensionAPI) {
 			const modelFlag = config.model ? `--model "${config.model}"` : "";
 			const thinkingFlag = config.thinking ? `--thinking ${config.thinking}` : "";
 
-			// Resolve API key so the spawned pi doesn't depend on shell env
-			let apiKeyFlag = "";
-			try {
-				let targetModel = ctx.model;
-				if (config.model) {
-					const [prov, ...rest] = config.model.split("/");
-					const modelId = rest.join("/");
-					if (modelId) {
-						const found = ctx.modelRegistry.find(prov, modelId);
-						if (found) targetModel = found;
-					}
-				}
-				if (targetModel) {
-					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(targetModel);
-					if (auth.ok) {
-						apiKeyFlag = `--api-key "${auth.apiKey}"`;
-					}
-				}
-			} catch {
-				// Best effort — pi might still pick it up from env
+			// Resolve git repo toplevel for cd-ing in the script
+			const toplevelResult = await pi.exec("git", ["rev-parse", "--show-toplevel"], { timeout: 5000 });
+			if (toplevelResult.code !== 0) {
+				ctx.ui.notify("Failed to find git repo root", "error");
+				return;
 			}
+			const gitRoot = toplevelResult.stdout.trim();
 
 			// Determine editor
 			let editor = process.env.EDITOR || process.env.VISUAL;
@@ -301,8 +280,12 @@ export default function (pi: ExtensionAPI) {
 			// 3. Git commit with final message
 			const errorLog = path.join(tmpDir, "pi-error.log");
 
+			// Detect user's shell (fish has universal variables with API keys)
+			const userShell = process.env.SHELL || "/bin/sh";
+
 			const shellScript = `#!/bin/sh
 set -e
+cd "${gitRoot}"
 
 echo "🤖 Generating commit message..."
 SP=$(cat "${systemPromptFile}")
@@ -311,9 +294,8 @@ cat "${promptFile}" | pi -p \\
   --no-extensions \\
   --no-tools \\
   ${modelFlag} \\
-  ${thinkingFlag} \\
-  ${apiKeyFlag} \\
-  --system-prompt "$SP" \\
+  ${thinkingFlag} \
+  --system-prompt "$SP" \
   > "${commitMsgFile}" 2> "${errorLog}" || true
 
 if [ ! -s "${commitMsgFile}" ]; then
@@ -327,36 +309,48 @@ if [ ! -s "${commitMsgFile}" ]; then
   echo "   You can still edit manually: ${commitMsgFile}"
   echo "   Then run: git commit -F ${commitMsgFile}"
   echo ""
+  touch "${doneMarker}"
   echo "Press Enter to close..."
   read -r
   exit 1
 fi
 
 echo "✅ Commit message generated. Opening editor..."
+# Prepend diffstat as comments so the editor shows what's being committed
+DIFFSTAT=$(git diff --staged --stat)
+if [ -n "$DIFFSTAT" ]; then
+  MSG=$(cat "${commitMsgFile}")
+  COMMENTED=$(echo "$DIFFSTAT" | sed 's/^/# /')
+  printf '%s\n\n# Changes to be committed:\n%s\n' "$MSG" "$COMMENTED" > "${commitMsgFile}"
+fi
 echo ""
 ${editor} "${commitMsgFile}"
 
-# Re-read after editing
-if [ -z "$(tr -d '[:space:]' < "${commitMsgFile}")" ]; then
+# Strip comment lines, then check if anything is left
+FILTERED=$(grep -v '^#' "${commitMsgFile}" | tr -d '[:space:]')
+if [ -z "$FILTERED" ]; then
   echo "🚫 Commit aborted: empty message after editing."
+  touch "${doneMarker}"
   echo "Press Enter to close..."
   read -r
   exit 0
 fi
 
-# Commit
-if git commit -F "${commitMsgFile}"; then
+# Commit using only non-comment lines (preserve blank lines in body)
+grep -v '^#' "${commitMsgFile}" > "${commitMsgFile}.clean"
+if git commit -F "${commitMsgFile}.clean"; then
   HASH=$(git rev-parse --short HEAD)
   FIRST_LINE=$(head -1 "${commitMsgFile}")
   echo ""
   echo "✅ Committed: $HASH: $FIRST_LINE"
+  touch "${doneMarker}"
   rm -rf "${tmpDir}"
 else
   echo ""
   echo "❌ git commit failed. Message preserved at: ${commitMsgFile}"
+  touch "${doneMarker}"
 fi
 
-touch "${doneMarker}"
 echo ""
 echo "Press Enter to close..."
 read -r
@@ -370,7 +364,7 @@ read -r
 			// Spawn zellij pane — it handles everything
 			const zellijResult = await pi.exec(
 				"zellij",
-				["action", "new-pane", "-d", "right", "--close-on-exit", "--", "sh", scriptFile],
+				["action", "new-pane", "-d", "right", "--close-on-exit", "--", userShell, "-l", "-c", `sh "${scriptFile}"`],
 				{ timeout: 5000 },
 			);
 
