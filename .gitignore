@@ -41,3 +41,4 @@ pompom/
 
 # Team session management (pi-teams extension)
 teams/
+agent/telegram.json

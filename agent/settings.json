@@ -1,9 +1,9 @@
 {
-  "lastChangelogVersion": "0.64.0",
-  "defaultProvider": "opencode-go",
-  "defaultModel": "glm-5",
+  "lastChangelogVersion": "0.65.2",
+  "defaultProvider": "zai",
+  "defaultModel": "glm-5.1",
   "defaultThinkingLevel": "medium",
-  "steeringMode": "one-at-a-time",
+  "steeringMode": "all",
   "followUpMode": "one-at-a-time",
   "transport": "auto",
   "theme": "light",
@@ -23,7 +23,8 @@
     "npm:tau-mirror",
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
-    "/home/michalvanko/Projects/pi-interactive-subagents"
+    "/home/michalvanko/Projects/pi-interactive-subagents",
+    "git:github.com/badlogic/pi-telegram"
   ],
   "flags": {
     "--marker": "pi!"
