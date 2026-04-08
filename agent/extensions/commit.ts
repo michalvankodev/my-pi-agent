@@ -252,7 +252,7 @@ export default function (pi: ExtensionAPI) {
 			const commitMsgFile = path.join(tmpDir, "COMMIT_EDITMSG");
 			const promptFile = path.join(tmpDir, "prompt.txt");
 			const systemPromptFile = path.join(tmpDir, "system-prompt.txt");
-			const doneMarker = path.join(tmpDir, "DONE");
+			const statusFile = path.join(os.tmpdir(), `${COMMIT_TMP_PREFIX}status-${path.basename(tmpDir)}`);
 
 			// Extract recent user messages for context
 			const sessionContext = extractSessionContext(ctx);
@@ -298,6 +298,8 @@ cat "${promptFile}" | pi -p \\
   --system-prompt "$SP" \
   > "${commitMsgFile}" 2> "${errorLog}" || true
 
+echo "generating" > "${statusFile}"
+
 if [ ! -s "${commitMsgFile}" ]; then
   echo ""
   echo "❌ Failed to generate commit message."
@@ -309,13 +311,15 @@ if [ ! -s "${commitMsgFile}" ]; then
   echo "   You can still edit manually: ${commitMsgFile}"
   echo "   Then run: git commit -F ${commitMsgFile}"
   echo ""
-  touch "${doneMarker}"
+  echo "failed" > "${statusFile}"
   echo "Press Enter to close..."
   read -r
+  echo "closed" > "${statusFile}"
   exit 1
 fi
 
 echo "✅ Commit message generated. Opening editor..."
+echo "editing" > "${statusFile}"
 # Prepend diffstat as comments so the editor shows what's being committed
 DIFFSTAT=$(git diff --staged --stat)
 if [ -n "$DIFFSTAT" ]; then
@@ -330,9 +334,10 @@ ${editor} "${commitMsgFile}"
 FILTERED=$(grep -v '^#' "${commitMsgFile}" | tr -d '[:space:]')
 if [ -z "$FILTERED" ]; then
   echo "🚫 Commit aborted: empty message after editing."
-  touch "${doneMarker}"
+  echo "aborted" > "${statusFile}"
   echo "Press Enter to close..."
   read -r
+  echo "closed" > "${statusFile}"
   exit 0
 fi
 
@@ -343,17 +348,18 @@ if git commit -F "${commitMsgFile}.clean"; then
   FIRST_LINE=$(head -1 "${commitMsgFile}")
   echo ""
   echo "✅ Committed: $HASH: $FIRST_LINE"
-  touch "${doneMarker}"
   rm -rf "${tmpDir}"
+  echo "committed" > "${statusFile}"
 else
   echo ""
   echo "❌ git commit failed. Message preserved at: ${commitMsgFile}"
-  touch "${doneMarker}"
+  echo "failed" > "${statusFile}"
 fi
 
 echo ""
 echo "Press Enter to close..."
 read -r
+echo "closed" > "${statusFile}"
 `;
 
 			const scriptFile = path.join(tmpDir, "commit.sh");
@@ -374,43 +380,70 @@ read -r
 				return;
 			}
 
-			// Background: wait for done marker and notify
-			waitForDone(pi, ctx, tmpDir, doneMarker, commitMsgFile).catch((err) => {
-				console.error("[commit] Wait error:", err);
+			// Background: watch status file and notify
+			watchStatus(pi, ctx, statusFile, commitMsgFile).catch((err) => {
+				console.error("[commit] Watch error:", err);
 			});
 		},
 	});
 }
 
+type CommitStatus = "generating" | "editing" | "committed" | "aborted" | "failed" | "closed";
+
 /**
- * Wait for the commit workflow to finish, then notify the user.
+ * Watch the status file and notify the user at each stage.
  */
-async function waitForDone(
+async function watchStatus(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
-	tmpDir: string,
-	doneMarker: string,
+	statusFile: string,
 	commitMsgFile: string,
 ): Promise<void> {
+	let lastStatus: CommitStatus | "" = "";
 	const startTime = Date.now();
-	const timeout = 600000; // 10 minutes (generation + editing)
+	const timeout = 600000; // 10 minutes
 
 	while (Date.now() - startTime < timeout) {
+		let status: CommitStatus | "" = "";
 		try {
-			await fs.access(doneMarker);
-			// Done marker exists
-			try {
-				const msg = await fs.readFile(commitMsgFile, "utf-8");
-				const firstLine = msg.trim().split("\n")[0];
-				ctx.ui.notify(`Committed: ${firstLine}`, "success");
-			} catch {
-				// tmpDir cleaned up = successful commit
-				ctx.ui.notify("Committed successfully!", "success");
-			}
-			return;
+			status = (await fs.readFile(statusFile, "utf-8")).trim() as CommitStatus;
 		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			// Status file doesn't exist yet (script hasn't started)
 		}
+
+		if (status && status !== lastStatus) {
+			lastStatus = status;
+
+			switch (status) {
+				case "generating":
+					ctx.ui.notify("🤖 Generating commit message...", "info");
+					break;
+				case "editing":
+					ctx.ui.notify("📝 Review commit message in editor", "info");
+					break;
+				case "committed": {
+					try {
+						const msg = await fs.readFile(commitMsgFile, "utf-8");
+						const firstLine = msg.trim().split("\n")[0];
+						ctx.ui.notify(`✅ Committed: ${firstLine}`, "success");
+					} catch {
+						ctx.ui.notify("✅ Committed successfully!", "success");
+					}
+					break;
+				}
+				case "aborted":
+					ctx.ui.notify("🚫 Commit aborted: empty message", "warn");
+					break;
+				case "failed":
+					ctx.ui.notify("❌ Commit failed", "error");
+					break;
+				case "closed":
+					await fs.rm(statusFile, { force: true }).catch(() => {});
+					return;
+			}
+		}
+
+		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
 
 	ctx.ui.notify("Commit workflow timed out (10 min)", "warn");
