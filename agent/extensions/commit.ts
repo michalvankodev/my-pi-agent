@@ -365,7 +365,8 @@ echo "closed" > "${statusFile}"
 			const scriptFile = path.join(tmpDir, "commit.sh");
 			await fs.writeFile(scriptFile, shellScript, { mode: 0o755, encoding: "utf-8" });
 
-			ctx.ui.notify("Opening zellij pane for commit generation...", "info");
+			// Model label for status notifications
+			const modelLabel = config.model || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown");
 
 			// Spawn zellij pane — it handles everything
 			const zellijResult = await pi.exec(
@@ -381,7 +382,7 @@ echo "closed" > "${statusFile}"
 			}
 
 			// Background: watch status file and notify
-			watchStatus(pi, ctx, statusFile, commitMsgFile).catch((err) => {
+			watchStatus(pi, ctx, statusFile, commitMsgFile, modelLabel).catch((err) => {
 				console.error("[commit] Watch error:", err);
 			});
 		},
@@ -398,6 +399,7 @@ async function watchStatus(
 	ctx: ExtensionContext,
 	statusFile: string,
 	commitMsgFile: string,
+	modelLabel: string,
 ): Promise<void> {
 	let lastStatus: CommitStatus | "" = "";
 	const startTime = Date.now();
@@ -416,7 +418,7 @@ async function watchStatus(
 
 			switch (status) {
 				case "generating":
-					ctx.ui.notify("🤖 Generating commit message...", "info");
+					ctx.ui.notify(`🤖 Generating commit message (${modelLabel})...`, "info");
 					break;
 				case "editing":
 					ctx.ui.notify("📝 Review commit message in editor", "info");
