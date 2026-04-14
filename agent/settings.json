@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.66.1",
+  "lastChangelogVersion": "0.67.1",
   "defaultProvider": "zai",
   "defaultModel": "glm-5.1",
   "defaultThinkingLevel": "medium",
@@ -19,17 +19,17 @@
   "packages": [
     "npm:@aliou/pi-guardrails",
     "npm:pi-answer",
-    "npm:pi-web-access",
     "npm:tau-mirror",
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
-    "/home/michalvanko/Projects/pi-interactive-subagents",
-    "git:github.com/badlogic/pi-telegram"
+    "git:github.com/HazAT/pi-interactive-subagents",
+    "git:github.com/badlogic/pi-telegram",
+    "npm:pi-zai-tools"
   ],
   "flags": {
     "--marker": "pi!"
   },
   "powerline": "default",
-  "workingVibeModel": "opencode-go/kimi-k2.5",
+  "workingVibeModel": "zai/glm-4.7-flash",
   "quietStartup": true
 }
