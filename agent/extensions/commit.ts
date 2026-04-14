@@ -11,8 +11,9 @@
  *
  * The command:
  * 1. Checks for staged changes (fails if none)
- * 2. Writes diff + session context + system prompt to temp files
- * 3. Spawns a new zellij pane immediately with a shell script that:
+ * 2. Condenses the diff programmatically (collapses large deletions, keeps additions)
+ * 3. Writes condensed diff + stat + session context + system prompt to temp files
+ * 4. Spawns a new zellij pane immediately with a shell script that:
  *    a. Pipes prompt into `pi -p --no-session --no-extensions --no-tools` → COMMIT_EDITMSG
  *    b. Opens $EDITOR on COMMIT_EDITMSG for review
  *    c. Commits with the final message (unless emptied)
@@ -38,10 +39,41 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const MAX_DIFF_SIZE = 50000; // ~50KB max diff to send to LLM
+const MAX_DIFF_SIZE = 25000; // ~25KB max condensed diff to send to LLM
+const MAX_DELETION_LINES = 20; // Max consecutive deletion lines per hunk before collapsing
 const MAX_SESSION_MESSAGES = 10; // Last N user messages to include as context
 const MAX_MESSAGE_LENGTH = 500; // Truncate each user message to this many chars
 const COMMIT_TMP_PREFIX = "pi-commit-";
+
+/**
+ * File patterns to exclude from the diff sent to the LLM.
+ * These are generated/dependency files whose contents are noise for commit messages.
+ * The stat summary still shows they changed, but the diff body is skipped.
+ */
+const NOISY_FILE_PATTERNS: RegExp[] = [
+	/(^|\/)(package-lock|npm-shrinkwrap)\.json$/,
+	/(^|\/)yarn\.lock$/,
+	/(^|\/)pnpm-lock\.yaml$/,
+	/(^|\/)bun\.lockb?$/,
+	/(^|\/)Cargo\.lock$/,
+	/(^|\/)Gemfile\.lock$/,
+	/(^|\/)composer\.lock$/,
+	/(^|\/)go\.sum$/,
+	/(^|\/)mix\.lock$/,
+	/(^|\/)Podfile\.lock$/,
+	/(^|\/)poetry\.lock$/,
+	/(^|\/)uv\.lock$/,
+	/(^|\/)pdm\.lock$/,
+	/(^|\/)conan\.lock$/,
+	/(^|\/)\.pnp\.c?js$/,
+];
+
+/**
+ * Check if a file path matches any noisy file pattern.
+ */
+function isNoisyFile(filePath: string): boolean {
+	return NOISY_FILE_PATTERNS.some((pattern) => pattern.test(filePath));
+}
 
 /**
  * Parse simple YAML-like frontmatter from a string.
@@ -134,6 +166,126 @@ Output ONLY the commit message, nothing else. Do not include code blocks or mark
 }
 
 /**
+ * Condense a git diff by collapsing large deletion blocks, replacing
+ * purely-deleted files with one-liner summaries, and skipping noisy
+ * lock/generated files.
+ *
+ * Strategy:
+ * - Skip lock/generated files (Cargo.lock, package-lock.json, etc.)
+ *   with a one-liner placeholder; the stat summary still shows them
+ * - For files that are purely deletions (no additions in any hunk):
+ *   replace with a single "--- deleted: path (N lines removed)" line
+ * - For mixed files: within each hunk, collapse runs of deletion lines
+ *   beyond MAX_DELETION_LINES into "... (N lines removed)"
+ * - Keep addition lines and context lines verbatim
+ */
+function condenseDiff(diff: string): string {
+	// Split into file sections (each starts with "diff --git")
+	const fileSections = diff.split(/(?=^diff --git )/m);
+
+	return fileSections
+		.map((section) => {
+			if (!section.startsWith("diff --git")) return section;
+
+			// Extract file path from the header
+			const pathMatch = section.match(/^diff --git a\/(.+?) b\/.+$/m);
+			const filePath = pathMatch ? pathMatch[1] : "unknown";
+
+			// Skip noisy lock/generated files entirely
+			if (isNoisyFile(filePath)) {
+				return `diff --git a/${filePath} b/${filePath}\n--- [lock file skipped]`;
+			}
+
+			// Check if this is a pure deletion (file deleted entirely)
+			if (/^deleted file mode/m.test(section)) {
+				const delLines = countLines(section, "-");
+				return `diff --git a/${filePath} b/${filePath}\ndeleted file mode\n--- ${filePath}\n+++ /dev/null\n@@ -1,${delLines} +0,0 @@\n--- deleted: ${filePath} (${delLines} lines removed)`;
+			}
+
+			// Check if this is a pure rename with no content changes
+			if (/^similarity index 100%/m.test(section)) {
+				return section; // Keep as-is, it's small
+			}
+
+			// Count additions and deletions across all hunks
+			const addLines = countLines(section, "+");
+			const delLines = countLines(section, "-");
+
+			// Pure deletion file (no additions in any hunk)
+			if (addLines === 0 && delLines > MAX_DELETION_LINES) {
+				return `diff --git a/${filePath} b/${filePath}\n--- a/${filePath}\n+++ b/${filePath}\n--- modified: ${filePath} (${delLines} lines removed, no additions)`;
+			}
+
+			// Mixed file: condense individual hunks
+			return condenseHunks(section, filePath);
+		})
+		.join("");
+}
+
+/**
+ * Count lines with a given prefix in a diff section,
+ * excluding the diff header lines.
+ */
+function countLines(section: string, prefix: string): number {
+	let count = 0;
+	for (const line of section.split("\n")) {
+		if (line.startsWith(prefix) && !line.startsWith(prefix + prefix)) {
+			count++;
+		}
+	}
+	return count;
+}
+
+/**
+ * Condense deletion runs within hunks of a file diff.
+ * Keeps additions and context lines verbatim.
+ */
+function condenseHunks(section: string, _filePath: string): string {
+	const lines = section.split("\n");
+	const result: string[] = [];
+	let inDeletionRun = false;
+	let deletionCount = 0;
+	let deletionBuffer: string[] = [];
+
+	for (const line of lines) {
+		if (line.startsWith("-") && !line.startsWith("--")) {
+			// Deletion line
+			if (!inDeletionRun) {
+				inDeletionRun = true;
+				deletionCount = 0;
+				deletionBuffer = [];
+			}
+			deletionCount++;
+			if (deletionCount <= MAX_DELETION_LINES) {
+				deletionBuffer.push(line);
+			}
+		} else {
+			// Non-deletion line: flush any pending deletion run
+			if (inDeletionRun) {
+				result.push(...deletionBuffer);
+				if (deletionCount > MAX_DELETION_LINES) {
+					result.push(`... (${deletionCount - MAX_DELETION_LINES} more lines removed)`);
+				}
+				inDeletionRun = false;
+				deletionCount = 0;
+				deletionBuffer = [];
+			}
+			result.push(line);
+		}
+	}
+
+	// Flush trailing deletion run
+	if (inDeletionRun) {
+		result.push(...deletionBuffer);
+		if (deletionCount > MAX_DELETION_LINES) {
+			result.push(`... (${deletionCount - MAX_DELETION_LINES} more lines removed)`);
+		}
+	}
+
+	return result.join("\n");
+}
+
+/**
  * Extract recent user messages from the session branch for context.
  */
 function extractSessionContext(ctx: ExtensionContext): string {
@@ -207,10 +359,14 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			let diff = diffResult.stdout;
+			// Condense the diff programmatically
+			let diff = condenseDiff(diffResult.stdout);
 			if (diff.length > MAX_DIFF_SIZE) {
 				diff = diff.substring(0, MAX_DIFF_SIZE) + "\n... [diff truncated]";
 			}
+
+			// Get the stat summary (always useful high-level context)
+			const statSummary = stagedCheck.stdout.trim();
 
 			// Load config
 			const config = loadCommitConfig();
@@ -259,7 +415,11 @@ export default function (pi: ExtensionAPI) {
 
 			// Build the user prompt
 			let userPrompt = "Generate a commit message for the following staged changes:\n\n";
-			userPrompt += "```diff\n" + diff + "\n```\n\n";
+
+			// Always include stat summary for reliable high-level picture
+			userPrompt += "Files changed:\n```\n" + statSummary + "\n```\n\n";
+
+			userPrompt += "Diff:\n```diff\n" + diff + "\n```\n\n";
 
 			if (sessionContext) {
 				userPrompt += "Recent session context (user requests that led to these changes):\n\n";
@@ -274,6 +434,9 @@ export default function (pi: ExtensionAPI) {
 			await fs.writeFile(promptFile, userPrompt, "utf-8");
 			await fs.writeFile(systemPromptFile, config.systemPrompt, "utf-8");
 
+			// Model label for status notifications and shell script display
+			const modelLabel = config.model || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown");
+
 			// Shell script that runs in the zellij pane:
 			// 1. Pipe prompt into pi -p → COMMIT_EDITMSG
 			// 2. Open editor for review
@@ -287,7 +450,9 @@ export default function (pi: ExtensionAPI) {
 set -e
 cd "${gitRoot}"
 
-echo "🤖 Generating commit message..."
+echo "generating" > "${statusFile}"
+
+echo "🤖 Generating commit message with ${modelLabel}..."
 SP=$(cat "${systemPromptFile}")
 cat "${promptFile}" | pi -p \\
   --no-session \\
@@ -297,8 +462,6 @@ cat "${promptFile}" | pi -p \\
   ${thinkingFlag} \
   --system-prompt "$SP" \
   > "${commitMsgFile}" 2> "${errorLog}" || true
-
-echo "generating" > "${statusFile}"
 
 if [ ! -s "${commitMsgFile}" ]; then
   echo ""
@@ -364,9 +527,6 @@ echo "closed" > "${statusFile}"
 
 			const scriptFile = path.join(tmpDir, "commit.sh");
 			await fs.writeFile(scriptFile, shellScript, { mode: 0o755, encoding: "utf-8" });
-
-			// Model label for status notifications
-			const modelLabel = config.model || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown");
 
 			// Spawn zellij pane — it handles everything
 			const zellijResult = await pi.exec(
