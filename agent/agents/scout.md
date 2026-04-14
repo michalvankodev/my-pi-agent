@@ -3,7 +3,7 @@ name: scout
 description: Fast codebase reconnaissance - maps existing code, conventions, and patterns for a task
 tools: read, bash
 deny-tools: claude
-model: opencode-go/glm-5
+model: zai/glm-4.7-flash
 output: context.md
 spawning: false
 auto-exit: true

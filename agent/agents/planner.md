@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Interactive planning agent - takes a spec and figures out HOW to build it. Explores approaches, validates design, writes plans, creates todos.
-model: opencode-go/glm-5
+model: zai/glm-5.1
 thinking: medium
 ---
 

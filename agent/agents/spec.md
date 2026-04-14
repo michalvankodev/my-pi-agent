@@ -1,7 +1,7 @@
 ---
 name: spec
 description: Interactive spec agent - clarifies intent, requirements, effort level, and success criteria. Answers "WHAT are we building?" so the planner can focus on HOW.
-model: opencode-go/glm-5
+model: zai/glm-5.1
 thinking: medium
 ---
 
