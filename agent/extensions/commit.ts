@@ -437,8 +437,13 @@ export default function (pi: ExtensionAPI) {
 			// Model label for status notifications and shell script display
 			const modelLabel = config.model || (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown");
 
+			// Progress file: shell script writes timing/error info here for TUI to read
+			const progressFile = path.join(tmpDir, "progress");
+
 			// Shell script that runs in the zellij pane:
 			// 1. Pipe prompt into pi -p → COMMIT_EDITMSG
+			//    - pi runs in background so we can show live progress
+			//    - stderr is tee'd to error log AND monitored for display
 			// 2. Open editor for review
 			// 3. Git commit with final message
 			const errorLog = path.join(tmpDir, "pi-error.log");
@@ -447,25 +452,100 @@ export default function (pi: ExtensionAPI) {
 			const userShell = process.env.SHELL || "/bin/sh";
 
 			const shellScript = `#!/bin/sh
-set -e
 cd "${gitRoot}"
 
 echo "generating" > "${statusFile}"
+echo "0" > "${progressFile}"
 
 echo "🤖 Generating commit message with ${modelLabel}..."
-SP=$(cat "${systemPromptFile}")
+PROMPT_SIZE=\$(wc -c < "${promptFile}" | tr -d ' ')
+PROMPT_LINES=\$(wc -l < "${promptFile}" | tr -d ' ')
+echo "   Input: \${PROMPT_SIZE} bytes, \${PROMPT_LINES} lines"
+echo ""
+
+SP=\$(cat "${systemPromptFile}")
+
+# Start pi in background, stderr goes to log file
+START=\$(date +%s)
 cat "${promptFile}" | pi -p \\
   --no-session \\
   --no-extensions \\
   --no-tools \\
   ${modelFlag} \\
   ${thinkingFlag} \
-  --system-prompt "$SP" \
-  > "${commitMsgFile}" 2> "${errorLog}" || true
+  --system-prompt "\$SP" \
+  > "${commitMsgFile}" 2> "${errorLog}" &
+PI_PID=\$!
+
+# Monitor loop: show elapsed time, output growth, stderr, live preview
+LAST_ERR_LINES=0
+PREV_OUT_LINES=0
+while kill -0 \$PI_PID 2>/dev/null; do
+  NOW=\$(date +%s)
+  ELAPSED=\$((NOW - START))
+  echo "\$ELAPSED" > "${progressFile}"
+
+  # Format elapsed time
+  if [ \$ELAPSED -ge 60 ]; then
+    MINS=\$((ELAPSED / 60))
+    SECS=\$((ELAPSED % 60))
+    TIME_FMT="\${MINS}m\${SECS}s"
+  else
+    TIME_FMT="\${ELAPSED}s"
+  fi
+
+  # Output file stats
+  OUT_SIZE=0
+  OUT_LINES=0
+  if [ -f "${commitMsgFile}" ]; then
+    OUT_SIZE=\$(wc -c < "${commitMsgFile}" | tr -d ' ')
+    OUT_LINES=\$(wc -l < "${commitMsgFile}" | tr -d ' ')
+  fi
+
+  # Build header line
+  if [ "\$OUT_SIZE" -gt 0 ]; then
+    STATUS_LINE="⏳ \${TIME_FMT} — \${OUT_SIZE} bytes, \${OUT_LINES} lines"
+  else
+    STATUS_LINE="⏳ \${TIME_FMT} — waiting for response..."
+  fi
+
+  # Show new stderr lines (retries, rate limits)
+  if [ -f "${errorLog}" ] && [ -s "${errorLog}" ]; then
+    NEW_ERR_LINES=\$(wc -l < "${errorLog}" | tr -d ' ')
+    if [ "\$NEW_ERR_LINES" -gt "\$LAST_ERR_LINES" ]; then
+      tail -n \$((NEW_ERR_LINES - LAST_ERR_LINES)) "${errorLog}" | while IFS= read -r line; do
+        printf "\r\x1b[K⚠  %s\n" "\$(echo "\$line" | head -c 120)"
+      done
+      LAST_ERR_LINES=\$NEW_ERR_LINES
+    fi
+  fi
+
+  # Show last 7 lines of output as live preview when new lines arrive
+  if [ "\$OUT_LINES" -gt 0 ] && [ "\$OUT_LINES" -ne "\$PREV_OUT_LINES" ]; then
+    PREV_OUT_LINES=\$OUT_LINES
+    printf "\r\x1b[K%s\n" "\$STATUS_LINE"
+    echo "─── preview ───"
+    tail -7 "${commitMsgFile}" | sed 's/^/  /'
+    echo "───────────────"
+  else
+    printf "\r\x1b[K%s  " "\$STATUS_LINE"
+  fi
+
+  sleep 1
+done
+
+# Wait for pi to finish and get exit code
+wait \$PI_PID || true
+NOW=\$(date +%s)
+ELAPSED=\$((NOW - START))
+echo "\$ELAPSED" > "${progressFile}"
+
+# Clear the progress line
+printf "\r\x1b[K"
 
 if [ ! -s "${commitMsgFile}" ]; then
   echo ""
-  echo "❌ Failed to generate commit message."
+  echo "❌ Failed to generate commit message (\${ELAPSED}s)."
   if [ -s "${errorLog}" ]; then
     echo "   Error output:"
     cat "${errorLog}"
@@ -481,21 +561,21 @@ if [ ! -s "${commitMsgFile}" ]; then
   exit 1
 fi
 
-echo "✅ Commit message generated. Opening editor..."
+echo "✅ Message generated in \${ELAPSED}s. Opening editor..."
 echo "editing" > "${statusFile}"
 # Prepend diffstat as comments so the editor shows what's being committed
-DIFFSTAT=$(git diff --staged --stat)
-if [ -n "$DIFFSTAT" ]; then
-  MSG=$(cat "${commitMsgFile}")
-  COMMENTED=$(echo "$DIFFSTAT" | sed 's/^/# /')
-  printf '%s\n\n# Changes to be committed:\n%s\n' "$MSG" "$COMMENTED" > "${commitMsgFile}"
+DIFFSTAT=\$(git diff --staged --stat)
+if [ -n "\$DIFFSTAT" ]; then
+  MSG=\$(cat "${commitMsgFile}")
+  COMMENTED=\$(echo "\$DIFFSTAT" | sed 's/^/# /')
+  printf '%s\n\n# Changes to be committed:\n%s\n' "\$MSG" "\$COMMENTED" > "${commitMsgFile}"
 fi
 echo ""
 ${editor} "${commitMsgFile}"
 
 # Strip comment lines, then check if anything is left
-FILTERED=$(grep -v '^#' "${commitMsgFile}" | tr -d '[:space:]')
-if [ -z "$FILTERED" ]; then
+FILTERED=\$(grep -v '^#' "${commitMsgFile}" | tr -d '[:space:]')
+if [ -z "\$FILTERED" ]; then
   echo "🚫 Commit aborted: empty message after editing."
   echo "aborted" > "${statusFile}"
   echo "Press Enter to close..."
@@ -506,16 +586,28 @@ fi
 
 # Commit using only non-comment lines (preserve blank lines in body)
 grep -v '^#' "${commitMsgFile}" > "${commitMsgFile}.clean"
-if git commit -F "${commitMsgFile}.clean"; then
-  HASH=$(git rev-parse --short HEAD)
-  FIRST_LINE=$(head -1 "${commitMsgFile}")
+git commit -F "${commitMsgFile}.clean" > "${tmpDir}/commit-output.log" 2>&1
+COMMIT_EXIT=\$?
+if [ \$COMMIT_EXIT -eq 0 ]; then
+  HASH=\$(git rev-parse --short HEAD)
+  FIRST_LINE=\$(head -1 "${commitMsgFile}")
   echo ""
-  echo "✅ Committed: $HASH: $FIRST_LINE"
+  echo "✅ Committed: \$HASH: \$FIRST_LINE"
   rm -rf "${tmpDir}"
   echo "committed" > "${statusFile}"
 else
   echo ""
-  echo "❌ git commit failed. Message preserved at: ${commitMsgFile}"
+  echo "❌ git commit failed (exit code \$COMMIT_EXIT). Message preserved at: ${commitMsgFile}"
+  if [ -s "${tmpDir}/commit-output.log" ]; then
+    echo ""
+    echo "   Commit output:"
+    sed 's/^/   /' "${tmpDir}/commit-output.log"
+  fi
+  echo ""
+  echo "   Fix the issue and re-run:"
+  echo "     git commit -F ${commitMsgFile}.clean"
+  echo "   Or edit the message first:"
+  echo "     ${editor} ${commitMsgFile} && git commit -F ${commitMsgFile}.clean"
   echo "failed" > "${statusFile}"
 fi
 
@@ -542,7 +634,7 @@ echo "closed" > "${statusFile}"
 			}
 
 			// Background: watch status file and notify
-			watchStatus(pi, ctx, statusFile, commitMsgFile, modelLabel).catch((err) => {
+			watchStatus(pi, ctx, statusFile, progressFile, errorLog, commitMsgFile, modelLabel).catch((err) => {
 				console.error("[commit] Watch error:", err);
 			});
 		},
@@ -552,18 +644,50 @@ echo "closed" > "${statusFile}"
 type CommitStatus = "generating" | "editing" | "committed" | "aborted" | "failed" | "closed";
 
 /**
+ * Format seconds into a human-readable duration.
+ */
+function formatDuration(seconds: number): string {
+	if (seconds >= 60) {
+		const mins = Math.floor(seconds / 60);
+		const secs = seconds % 60;
+		return `${mins}m${secs}s`;
+	}
+	return `${seconds}s`;
+}
+
+/**
+ * Read the last meaningful line from the error log.
+ */
+async function readLastError(errorLog: string): Promise<string> {
+	try {
+		const content = await fs.readFile(errorLog, "utf-8");
+		const lines = content.trim().split("\n").filter((l) => l.trim());
+		if (lines.length === 0) return "";
+		// Return last line, truncated
+		return lines[lines.length - 1].substring(0, 120);
+	} catch {
+		return "";
+	}
+}
+
+/**
  * Watch the status file and notify the user at each stage.
+ * During generation, periodically updates the TUI footer with elapsed time
+ * and any error/retry output from pi.
  */
 async function watchStatus(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	statusFile: string,
+	progressFile: string,
+	errorLog: string,
 	commitMsgFile: string,
 	modelLabel: string,
 ): Promise<void> {
 	let lastStatus: CommitStatus | "" = "";
 	const startTime = Date.now();
 	const timeout = 600000; // 10 minutes
+	let lastProgressUpdate = 0;
 
 	while (Date.now() - startTime < timeout) {
 		let status: CommitStatus | "" = "";
@@ -579,11 +703,14 @@ async function watchStatus(
 			switch (status) {
 				case "generating":
 					ctx.ui.notify(`🤖 Generating commit message (${modelLabel})...`, "info");
+					ctx.ui.setStatus("commit", `🤖 Commit: generating with ${modelLabel}...`);
 					break;
 				case "editing":
+					ctx.ui.setStatus("commit", undefined); // Clear footer
 					ctx.ui.notify("📝 Review commit message in editor", "info");
 					break;
 				case "committed": {
+					ctx.ui.setStatus("commit", undefined);
 					try {
 						const msg = await fs.readFile(commitMsgFile, "utf-8");
 						const firstLine = msg.trim().split("\n")[0];
@@ -594,20 +721,44 @@ async function watchStatus(
 					break;
 				}
 				case "aborted":
+					ctx.ui.setStatus("commit", undefined);
 					ctx.ui.notify("🚫 Commit aborted: empty message", "warn");
 					break;
 				case "failed":
+					ctx.ui.setStatus("commit", undefined);
 					ctx.ui.notify("❌ Commit failed", "error");
 					break;
 				case "closed":
+					ctx.ui.setStatus("commit", undefined);
 					await fs.rm(statusFile, { force: true }).catch(() => {});
 					return;
+			}
+		}
+
+		// During generation: update footer with progress every 3 seconds
+		if (status === "generating" && Date.now() - lastProgressUpdate > 3000) {
+			lastProgressUpdate = Date.now();
+			let elapsed = 0;
+			try {
+				elapsed = parseInt(await fs.readFile(progressFile, "utf-8"), 10) || 0;
+			} catch {
+				// progress file not written yet
+			}
+
+			const lastErr = await readLastError(errorLog);
+			const duration = formatDuration(elapsed);
+
+			if (lastErr) {
+				ctx.ui.setStatus("commit", `🤖 Commit: ${duration} — ${lastErr}`);
+			} else {
+				ctx.ui.setStatus("commit", `🤖 Commit: generating with ${modelLabel}... ${duration}`);
 			}
 		}
 
 		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
 
+	ctx.ui.setStatus("commit", undefined);
 	ctx.ui.notify("Commit workflow timed out (10 min)", "warn");
 	ctx.ui.notify(`Commit message preserved at: ${commitMsgFile}`, "info");
 }
