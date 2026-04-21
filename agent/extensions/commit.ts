@@ -14,7 +14,7 @@
  * 2. Condenses the diff programmatically (collapses large deletions, keeps additions)
  * 3. Writes condensed diff + stat + session context + system prompt to temp files
  * 4. Spawns a new zellij pane immediately with a shell script that:
- *    a. Pipes prompt into `pi -p --no-session --no-extensions --no-tools` → COMMIT_EDITMSG
+ *    a. Pipes prompt into `pi -p --no-session --no-extensions --no-tools --no-context-files` → COMMIT_EDITMSG
  *    b. Opens $EDITOR on COMMIT_EDITMSG for review
  *    c. Commits with the final message (unless emptied)
  *
@@ -25,7 +25,6 @@
  *   ---
  *   <system prompt body for commit message generation>
  *
- * Falls back to extensions/commit.json for legacy config, then session defaults.
  *
  * Requirements:
  * - zellij (terminal multiplexer)
@@ -33,7 +32,8 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { getAgentDir, parseFrontmatter, truncateHead, formatSize } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -75,38 +75,11 @@ function isNoisyFile(filePath: string): boolean {
 	return NOISY_FILE_PATTERNS.some((pattern) => pattern.test(filePath));
 }
 
-/**
- * Parse simple YAML-like frontmatter from a string.
- */
-function parseFrontmatter(content: string): { frontmatter: Record<string, string>; body: string } {
-	const frontmatter: Record<string, string> = {};
-	let body = content;
 
-	if (content.startsWith("---")) {
-		const endIdx = content.indexOf("---", 3);
-		if (endIdx !== -1) {
-			const yaml = content.slice(3, endIdx).trim();
-			body = content.slice(endIdx + 3).trim();
-			for (const line of yaml.split("\n")) {
-				const colonIdx = line.indexOf(":");
-				if (colonIdx !== -1) {
-					const key = line.slice(0, colonIdx).trim();
-					let val = line.slice(colonIdx + 1).trim();
-					if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-						val = val.slice(1, -1);
-					}
-					frontmatter[key] = val;
-				}
-			}
-		}
-	}
-
-	return { frontmatter, body };
-}
 
 /**
- * Load commit configuration from agents/commit.md, falling back to
- * extensions/commit.json. Returns { model, thinking, systemPrompt }.
+ * Load commit configuration from agents/commit.md.
+ * Returns { model, thinking, systemPrompt }.
  */
 function loadCommitConfig(): { model?: string; thinking?: string; systemPrompt: string } {
 	const defaultSystemPrompt = `You are a commit message generator. Generate a conventional commit message based on the git diff and context provided.
@@ -130,35 +103,18 @@ Follow these rules:
 
 Output ONLY the commit message, nothing else. Do not include code blocks or markdown.`;
 
-	// Try agents/commit.md first
 	const mdPath = path.join(getAgentDir(), "agents", "commit.md");
 	if (existsSync(mdPath)) {
 		try {
 			const raw = readFileSync(mdPath, "utf-8");
 			const { frontmatter, body } = parseFrontmatter(raw);
 			return {
-				model: frontmatter.model,
-				thinking: frontmatter.thinking || frontmatter.thinkingLevel,
-				systemPrompt: body.trim() || defaultSystemPrompt,
+				model: frontmatter.model as string | undefined,
+				thinking: (frontmatter.thinking || frontmatter.thinkingLevel) as string | undefined,
+				systemPrompt: (body as string).trim() || defaultSystemPrompt,
 			};
 		} catch (err) {
 			console.error("[commit] Failed to read agents/commit.md:", err);
-		}
-	}
-
-	// Fallback to legacy extensions/commit.json
-	const jsonPath = path.join(getAgentDir(), "extensions", "commit.json");
-	if (existsSync(jsonPath)) {
-		try {
-			const raw = readFileSync(jsonPath, "utf-8");
-			const config = JSON.parse(raw) as { model?: string; thinkingLevel?: string };
-			return {
-				model: config.model,
-				thinking: config.thinkingLevel,
-				systemPrompt: defaultSystemPrompt,
-			};
-		} catch (err) {
-			console.error("[commit] Failed to read extensions/commit.json:", err);
 		}
 	}
 
@@ -313,6 +269,13 @@ function extractSessionContext(ctx: ExtensionContext): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	// Register custom renderer for commit history entries in the session tree
+	pi.registerMessageRenderer("commit", (message, _options, theme) => {
+		const hash = message.details?.hash ?? "?";
+		const firstLine = message.details?.message ?? "commit";
+		return new Text(theme.fg("success", `✅ Commit ${hash}: ${firstLine}`), 0, 0);
+	});
+
 	pi.registerCommand("commit", {
 		description: "Generate conventional commit message using pi with session context, then open editor in zellij pane",
 		handler: async (args: string, ctx) => {
@@ -360,9 +323,11 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Condense the diff programmatically
-			let diff = condenseDiff(diffResult.stdout);
-			if (diff.length > MAX_DIFF_SIZE) {
-				diff = diff.substring(0, MAX_DIFF_SIZE) + "\n... [diff truncated]";
+			const condensed = condenseDiff(diffResult.stdout);
+			const truncation = truncateHead(condensed, { maxBytes: MAX_DIFF_SIZE });
+			let diff = truncation.content;
+			if (truncation.truncated) {
+				diff += `\n... [diff truncated: ${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}]`;
 			}
 
 			// Get the stat summary (always useful high-level context)
@@ -476,9 +441,10 @@ cat "${promptFile}" | pi -p \\
   --no-session \\
   --no-extensions \\
   --no-tools \\
+  --no-context-files \\
   ${modelFlag} \\
   ${thinkingFlag} \
-  --system-prompt "\$SP" \
+  --append-system-prompt "\$SP" \
   > "${tmpDir}/pipe" 2> "${errorLog}" &
 PI_PID=\$!
 
@@ -595,30 +561,66 @@ fi
 
 # Commit using only non-comment lines (preserve blank lines in body)
 grep -v '^#' "${commitMsgFile}" > "${commitMsgFile}.clean"
-git commit -F "${commitMsgFile}.clean" > "${tmpDir}/commit-output.log" 2>&1
-COMMIT_EXIT=\$?
-if [ \$COMMIT_EXIT -eq 0 ]; then
-  HASH=\$(git rev-parse --short HEAD)
-  FIRST_LINE=\$(head -1 "${commitMsgFile}")
+
+# Commit with retry loop on failure
+while true; do
+  cp "${commitMsgFile}.clean" "$(git rev-parse --git-dir)/COMMIT_EDITMSG"
+  git commit -F "${commitMsgFile}.clean" > "${tmpDir}/commit-output.log" 2>&1
+  COMMIT_EXIT=\$?
+  if [ \$COMMIT_EXIT -eq 0 ]; then
+    HASH=\$(git rev-parse --short HEAD)
+    FIRST_LINE=\$(head -1 "${commitMsgFile}")
+    echo ""
+    echo "✅ Committed: \$HASH: \$FIRST_LINE"
+    rm -rf "${tmpDir}"
+    echo "committed" > "${statusFile}"
+    break
+  fi
+
+  # Write failure output so main pi can display it
+  cp "${tmpDir}/commit-output.log" "${tmpDir}/retry-error"
+  echo "retrying" > "${statusFile}"
+
   echo ""
-  echo "✅ Committed: \$HASH: \$FIRST_LINE"
-  rm -rf "${tmpDir}"
-  echo "committed" > "${statusFile}"
-else
-  echo ""
-  echo "❌ git commit failed (exit code \$COMMIT_EXIT). Message preserved at: ${commitMsgFile}"
+  echo "❌ git commit failed (exit code \$COMMIT_EXIT):"
   if [ -s "${tmpDir}/commit-output.log" ]; then
     echo ""
-    echo "   Commit output:"
     sed 's/^/   /' "${tmpDir}/commit-output.log"
   fi
   echo ""
-  echo "   Fix the issue and re-run:"
-  echo "     git commit -F ${commitMsgFile}.clean"
-  echo "   Or edit the message first:"
-  echo "     ${editor} ${commitMsgFile} && git commit -F ${commitMsgFile}.clean"
-  echo "failed" > "${statusFile}"
-fi
+  echo "[R]etry  [E]dit  [A]bort"
+  while true; do
+    read -r ANSWER
+    case "\$ANSWER" in
+      [Rr]|""|retry)
+        echo ""
+        echo "🔄 Retrying..."
+        break
+        ;;
+      [Ee]|edit)
+        echo "editing" > "${statusFile}"
+        ${editor} "${commitMsgFile}"
+        FILTERED=\$(grep -v '^#' "${commitMsgFile}" | tr -d '[:space:]')
+        if [ -z "\$FILTERED" ]; then
+          echo "🚫 Commit aborted: empty message after editing."
+          echo "aborted" > "${statusFile}"
+          break 2
+        fi
+        grep -v '^#' "${commitMsgFile}" > "${commitMsgFile}.clean"
+        echo ""
+        echo "🔄 Retrying..."
+        break
+        ;;
+      [Aa]|abort|*)
+        echo "🚫 Commit aborted."
+        echo "   Message preserved at: ${commitMsgFile}"
+        echo "   Run \`git commit\` to retry with the saved message."
+        echo "failed" > "${statusFile}"
+        break 2
+        ;;
+    esac
+  done
+done
 
 echo ""
 echo "Press Enter to close..."
@@ -650,7 +652,7 @@ echo "closed" > "${statusFile}"
 	});
 }
 
-type CommitStatus = "generating" | "editing" | "committed" | "aborted" | "failed" | "closed";
+type CommitStatus = "generating" | "editing" | "retrying" | "committed" | "aborted" | "failed" | "closed";
 
 /**
  * Format seconds into a human-readable duration.
@@ -713,32 +715,66 @@ async function watchStatus(
 				case "generating":
 					ctx.ui.notify(`🤖 Generating commit message (${modelLabel})...`, "info");
 					ctx.ui.setStatus("commit", `🤖 Commit: generating with ${modelLabel}...`);
+					ctx.ui.setWorkingIndicator({
+						frames: [
+							ctx.ui.theme.fg("dim", "⠋ commit"),
+							ctx.ui.theme.fg("muted", "⠙ commit"),
+							ctx.ui.theme.fg("accent", "⠹ commit"),
+							ctx.ui.theme.fg("muted", "⠸ commit"),
+						],
+						intervalMs: 120,
+					});
 					break;
 				case "editing":
 					ctx.ui.setStatus("commit", undefined); // Clear footer
+					ctx.ui.setWorkingIndicator(); // Restore default indicator
 					ctx.ui.notify("📝 Review commit message in editor", "info");
 					break;
 				case "committed": {
 					ctx.ui.setStatus("commit", undefined);
+					ctx.ui.setWorkingIndicator(); // Restore default indicator
 					try {
 						const msg = await fs.readFile(commitMsgFile, "utf-8");
 						const firstLine = msg.trim().split("\n")[0];
 						ctx.ui.notify(`✅ Committed: ${firstLine}`, "success");
+						// Get the short hash from git
+						const hashResult = await pi.exec("git", ["rev-parse", "--short", "HEAD"], { timeout: 5000 });
+						const hash = hashResult.code === 0 ? hashResult.stdout.trim() : "??";
+						pi.appendEntry("commit", { hash, message: firstLine });
 					} catch {
 						ctx.ui.notify("✅ Committed successfully!", "success");
+						pi.appendEntry("commit", { hash: "?", message: "committed" });
 					}
+					break;
+				}
+				case "retrying": {
+					ctx.ui.setWorkingIndicator(); // Restore default indicator
+					// Read the retry error for display
+					let retryError = "";
+					try {
+						const retryErrFile = path.join(path.dirname(commitMsgFile), "retry-error");
+						const errContent = await fs.readFile(retryErrFile, "utf-8");
+						const lastLines = errContent.trim().split("\n").slice(-3);
+						retryError = lastLines.join(" | ").substring(0, 100);
+					} catch { /* ignore */ }
+					const label = retryError ? `⚠ Commit hook failed — waiting in retry loop: ${retryError}` : "⚠ Commit hook failed — waiting in retry loop";
+					ctx.ui.setStatus("commit", label);
+					ctx.ui.notify("⚠ Commit hook failed. Use [R]etry/[E]dit/[A]bort in the commit pane.", "warn");
 					break;
 				}
 				case "aborted":
 					ctx.ui.setStatus("commit", undefined);
+					ctx.ui.setWorkingIndicator(); // Restore default indicator
 					ctx.ui.notify("🚫 Commit aborted: empty message", "warn");
 					break;
 				case "failed":
 					ctx.ui.setStatus("commit", undefined);
+					ctx.ui.setWorkingIndicator(); // Restore default indicator
 					ctx.ui.notify("❌ Commit failed", "error");
 					break;
 				case "closed":
 					ctx.ui.setStatus("commit", undefined);
+					ctx.ui.setWorkingIndicator(); // Restore default indicator
 					await fs.rm(statusFile, { force: true }).catch(() => {});
 					return;
 			}
