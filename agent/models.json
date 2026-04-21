@@ -1,5 +1,26 @@
 {
 	"providers": {
+		"llama-cpp": {
+			"baseUrl": "http://localhost:6660/v1",
+			"api": "openai-completions",
+			"apiKey": "not-needed",
+			"compat": {
+				"supportsDeveloperRole": false,
+				"supportsReasoningEffort": false,
+				"maxTokensField": "max_tokens"
+			},
+			"models": [
+				{
+					"id": "local-model",
+					"name": "Local (llama.cpp)",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 32768,
+					"maxTokens": 4096,
+					"cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+				}
+			]
+		},
 		"zai": {
 			"baseUrl": "https://api.z.ai/api/coding/paas/v4",
 			"api": "openai-completions",

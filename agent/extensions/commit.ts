@@ -465,6 +465,11 @@ echo ""
 
 SP=\$(cat "${systemPromptFile}")
 
+# Use a FIFO so pi line-buffers output (not full-buffered like a file)
+mkfifo "${tmpDir}/pipe" || exit 1
+cat "${tmpDir}/pipe" > "${commitMsgFile}" &
+CAT_PID=\$!
+
 # Start pi in background, stderr goes to log file
 START=\$(date +%s)
 cat "${promptFile}" | pi -p \\
@@ -474,7 +479,7 @@ cat "${promptFile}" | pi -p \\
   ${modelFlag} \\
   ${thinkingFlag} \
   --system-prompt "\$SP" \
-  > "${commitMsgFile}" 2> "${errorLog}" &
+  > "${tmpDir}/pipe" 2> "${errorLog}" &
 PI_PID=\$!
 
 # Monitor loop: show elapsed time, output growth, stderr, live preview
@@ -535,7 +540,11 @@ while kill -0 \$PI_PID 2>/dev/null; do
 done
 
 # Wait for pi to finish and get exit code
-wait \$PI_PID || true
+wait \$PI_PID
+PI_EXIT=\$?
+# Wait for the FIFO reader to finish flushing
+wait \$CAT_PID 2>/dev/null || true
+rm -f "${tmpDir}/pipe"
 NOW=\$(date +%s)
 ELAPSED=\$((NOW - START))
 echo "\$ELAPSED" > "${progressFile}"

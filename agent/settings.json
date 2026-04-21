@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.67.1",
-  "defaultProvider": "zai",
-  "defaultModel": "glm-5.1",
+  "lastChangelogVersion": "0.68.0",
+  "defaultProvider": "llama-cpp",
+  "defaultModel": "local-model",
   "defaultThinkingLevel": "medium",
   "steeringMode": "all",
   "followUpMode": "one-at-a-time",
@@ -24,12 +24,19 @@
     "npm:pi-powerline-footer",
     "git:github.com/HazAT/pi-interactive-subagents",
     "git:github.com/badlogic/pi-telegram",
-    "npm:pi-zai-tools"
+    "npm:pi-zai-tools",
+    "npm:pi-ask-user",
+    "npm:pi-desktop-notify"
   ],
   "flags": {
     "--marker": "pi!"
   },
   "powerline": "default",
   "workingVibeModel": "zai/glm-4.7-flash",
-  "quietStartup": true
+  "quietStartup": true,
+  "enabledModels": [
+    "zai/glm-5.1:medium",
+    "zai/glm-4.7-flash:off"
+  ],
+  "hideThinkingBlock": true
 }
