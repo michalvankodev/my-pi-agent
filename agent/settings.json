@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.68.0",
+  "lastChangelogVersion": "0.68.1",
   "defaultProvider": "llama-cpp",
   "defaultModel": "local-model",
   "defaultThinkingLevel": "medium",
@@ -23,10 +23,10 @@
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
     "git:github.com/HazAT/pi-interactive-subagents",
-    "git:github.com/badlogic/pi-telegram",
     "npm:pi-zai-tools",
     "npm:pi-ask-user",
-    "npm:pi-desktop-notify"
+    "npm:pi-desktop-notify",
+    "npm:@llblab/pi-telegram"
   ],
   "flags": {
     "--marker": "pi!"
