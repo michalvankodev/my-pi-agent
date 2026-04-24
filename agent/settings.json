@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.68.1",
-  "defaultProvider": "llama-cpp",
-  "defaultModel": "local-model",
+  "lastChangelogVersion": "0.70.0",
+  "defaultProvider": "zai",
+  "defaultModel": "glm-5.1",
   "defaultThinkingLevel": "medium",
   "steeringMode": "all",
   "followUpMode": "one-at-a-time",
@@ -26,7 +26,8 @@
     "npm:pi-zai-tools",
     "npm:pi-ask-user",
     "npm:pi-desktop-notify",
-    "npm:@llblab/pi-telegram"
+    "npm:@llblab/pi-telegram",
+    "npm:pi-annotate"
   ],
   "flags": {
     "--marker": "pi!"
@@ -36,7 +37,8 @@
   "quietStartup": true,
   "enabledModels": [
     "zai/glm-5.1:medium",
-    "zai/glm-4.7-flash:off"
+    "zai/glm-4.7-flash:off",
+    "llama-cpp/local-model:medium"
   ],
-  "hideThinkingBlock": true
+  "hideThinkingBlock": false
 }
