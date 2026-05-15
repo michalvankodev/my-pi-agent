@@ -18,7 +18,6 @@
   ],
   "packages": [
     "npm:@aliou/pi-guardrails",
-    "npm:pi-answer",
     "npm:tau-mirror",
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
