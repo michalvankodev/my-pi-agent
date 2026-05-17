@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.70.0",
+  "lastChangelogVersion": "0.74.1",
   "defaultProvider": "zai",
   "defaultModel": "glm-5.1",
   "defaultThinkingLevel": "medium",
@@ -21,7 +21,6 @@
     "npm:tau-mirror",
     "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
-    "git:github.com/HazAT/pi-interactive-subagents",
     "npm:pi-zai-tools",
     "npm:pi-ask-user",
     "npm:pi-desktop-notify",
@@ -32,12 +31,12 @@
     "--marker": "pi!"
   },
   "powerline": "default",
-  "workingVibeModel": "zai/glm-4.7-flash",
+  "workingVibeModel": "lemonade/Qwen3.6-35B-A3B-GGUF",
   "quietStartup": true,
   "enabledModels": [
     "zai/glm-5.1:medium",
     "zai/glm-4.7-flash:off",
-    "llama-cpp/local-model:medium"
+    "lemonade/Qwen3.6-35B-A3B-GGUF:medium"
   ],
   "hideThinkingBlock": false
 }

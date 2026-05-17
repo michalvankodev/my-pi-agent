@@ -42,3 +42,7 @@ pompom/
 # Team session management (pi-teams extension)
 teams/
 agent/telegram.json
+agent/locks.json
+
+# Telegram temp files (locks, attachments)
+agent/tmp/
