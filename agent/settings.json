@@ -19,13 +19,13 @@
   "packages": [
     "npm:@aliou/pi-guardrails",
     "npm:tau-mirror",
-    "npm:pi-file-watcher",
     "npm:pi-powerline-footer",
     "npm:pi-zai-tools",
     "npm:pi-ask-user",
     "npm:pi-desktop-notify",
     "npm:@llblab/pi-telegram",
-    "npm:pi-annotate"
+    "npm:pi-annotate",
+    "npm:@narumitw/pi-goal"
   ],
   "flags": {
     "--marker": "pi!"
