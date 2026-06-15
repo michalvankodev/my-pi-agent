@@ -46,3 +46,4 @@ agent/locks.json
 
 # Telegram temp files (locks, attachments)
 agent/tmp/
+agent/trust.json

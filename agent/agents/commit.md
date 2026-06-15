@@ -1,5 +1,5 @@
 ---
-model: zai/glm-4.5-air
+model: openai-codex/gpt-5.4-mini
 thinking: off
 ---
 

@@ -1,31 +1,39 @@
 {
-	"lastChangelogVersion": "0.75.5",
-	"defaultProvider": "zai",
-	"defaultModel": "glm-5.1",
-	"defaultThinkingLevel": "medium",
-	"steeringMode": "all",
-	"followUpMode": "one-at-a-time",
-	"transport": "auto",
-	"theme": "light",
-	"tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
-	"packages": [
-		"npm:@aliou/pi-guardrails",
-		"npm:pi-powerline-footer",
-		"npm:pi-zai-tools",
-		"npm:pi-ask-user",
-		"npm:pi-desktop-notify",
-		"npm:@llblab/pi-telegram",
-		"npm:pi-annotate",
-		"npm:@narumitw/pi-goal"
-	],
-	"powerline": "default",
-	"workingVibeModel": "lemonade/Qwen3.6-35B-A3B-GGUF",
-	"quietStartup": true,
-	"enabledModels": [
-		"zai/glm-5.1:medium",
-		"openai-codex/gpt-5.5:low",
-		"lemonade/Qwen3.6-35B-A3B-GGUF:medium"
-	],
-	"hideThinkingBlock": false,
-	"treeFilterMode": "no-tools"
+  "lastChangelogVersion": "0.79.3",
+  "defaultProvider": "zai",
+  "defaultModel": "glm-5.2",
+  "defaultThinkingLevel": "medium",
+  "steeringMode": "all",
+  "followUpMode": "one-at-a-time",
+  "transport": "auto",
+  "theme": "light",
+  "tools": [
+    "read",
+    "bash",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls"
+  ],
+  "packages": [
+    "npm:@aliou/pi-guardrails",
+    "npm:pi-powerline-footer",
+    "npm:pi-zai-tools",
+    "npm:pi-ask-user",
+    "npm:pi-desktop-notify",
+    "npm:@llblab/pi-telegram",
+    "npm:pi-annotate",
+    "npm:@narumitw/pi-goal"
+  ],
+  "powerline": "default",
+  "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",
+  "quietStartup": true,
+  "enabledModels": [
+    "zai/glm-5.2:medium",
+    "openai-codex/gpt-5.5:low",
+    "llama-cpp/Qwen3.6-35B-A3B-GGUF:medium"
+  ],
+  "hideThinkingBlock": false,
+  "treeFilterMode": "no-tools"
 }
