@@ -46,7 +46,7 @@ See pi's `docs/extensions.md` and `examples/extensions/` for the full API.
 
 | Extension | Description | Config |
 |-----------|-------------|--------|
-| `commit.ts` | `/commit` - Generates conventional commit messages from staged changes using LLM, opens editor in zellij pane for review | `commit.json` (model, thinkingLevel) |
+| `commit.ts` | `/commit` - Generates conventional commit messages from staged changes using LLM, opens editor in zellij pane for review | `agents/commit.md` frontmatter (`model`, `thinking`); global at `~/.pi/agent/agents/commit.md`, per-project override at `<project>/.pi/agents/commit.md` (field-by-field merge) |
 | `guardrails` (npm:@aliou/pi-guardrails) | Permission gate for dangerous commands (rm -rf, sudo, git force push, etc.) - prompts for confirmation before execution | `guardrails.json` (patterns, enabled features) |
 
 ## Adding New Plugins

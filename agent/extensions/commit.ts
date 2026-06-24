@@ -18,12 +18,20 @@
  *    b. Opens $EDITOR on COMMIT_EDITMSG for review
  *    c. Commits with the final message (unless emptied)
  *
- * Configuration: agents/commit.md with frontmatter:
+ * Configuration (loaded with per-project overrides):
+ *   - Global:  ~/.pi/agent/agents/commit.md
+ *   - Project: <git-root>/.pi/agents/commit.md  (overrides global, field by field)
+ *
+ * Frontmatter:
  *   ---
  *   model: zai/glm-4.7-flash
  *   thinking: off
  *   ---
  *   <system prompt body for commit message generation>
+ *
+ * A project file may set only frontmatter (inherits the global prompt body)
+ * or only a body (inherits the global provider/thinking). Fields merge, so an
+ * override can change just the model or just the prompt.
  *
  *
  * Requirements:
@@ -78,11 +86,10 @@ function isNoisyFile(filePath: string): boolean {
 
 
 /**
- * Load commit configuration from agents/commit.md.
- * Returns { model, thinking, systemPrompt }.
+ * Built-in fallback system prompt used when no prompt body is configured in
+ * either the global or the project-local agents/commit.md.
  */
-function loadCommitConfig(): { model?: string; thinking?: string; systemPrompt: string } {
-	const defaultSystemPrompt = `You are a commit message generator. Generate a conventional commit message based on the git diff and context provided.
+const DEFAULT_SYSTEM_PROMPT = `You are a commit message generator. Generate a conventional commit message based on the git diff and context provided.
 
 Follow these rules:
 1. First line: conventional commit format (type: description)
@@ -103,22 +110,65 @@ Follow these rules:
 
 Output ONLY the commit message, nothing else. Do not include code blocks or markdown.`;
 
-	const mdPath = path.join(getAgentDir(), "agents", "commit.md");
-	if (existsSync(mdPath)) {
-		try {
-			const raw = readFileSync(mdPath, "utf-8");
-			const { frontmatter, body } = parseFrontmatter(raw);
-			return {
-				model: frontmatter.model as string | undefined,
-				thinking: (frontmatter.thinking || frontmatter.thinkingLevel) as string | undefined,
-				systemPrompt: (body as string).trim() || defaultSystemPrompt,
-			};
-		} catch (err) {
-			console.error("[commit] Failed to read agents/commit.md:", err);
-		}
-	}
+/** Parsed fields from an agents/commit.md file. `body` is the trimmed prompt text (may be empty). */
+interface ParsedCommitMd {
+	model?: string;
+	thinking?: string;
+	body: string;
+}
 
-	return { systemPrompt: defaultSystemPrompt };
+/** Parse an agents/commit.md source into its frontmatter + body. */
+function parseCommitMd(raw: string): ParsedCommitMd {
+	const { frontmatter, body } = parseFrontmatter(raw);
+	return {
+		model: frontmatter.model as string | undefined,
+		thinking: (frontmatter.thinking || frontmatter.thinkingLevel) as string | undefined,
+		body: (body as string).trim(),
+	};
+}
+
+/** Read an agents/commit.md file into parsed fields, or undefined if missing/unreadable. */
+function tryReadCommitMd(mdPath: string): ParsedCommitMd | undefined {
+	if (!existsSync(mdPath)) return undefined;
+	try {
+		return parseCommitMd(readFileSync(mdPath, "utf-8"));
+	} catch (err) {
+		console.error(`[commit] Failed to read ${mdPath}:`, err);
+		return undefined;
+	}
+}
+
+/**
+ * Load commit configuration with per-project overrides.
+ *
+ * Resolution (first non-empty value wins, per field):
+ *   1. Project-local: <projectRoot>/.pi/agents/commit.md
+ *   2. Global:        ~/.pi/agent/agents/commit.md  ($PI_CODING_AGENT_DIR)
+ *   3. Built-in default prompt
+ *
+ * Merge semantics (field-by-field, so partial overrides work):
+ *   - model / thinking: project frontmatter value, else global frontmatter value
+ *   - systemPrompt:     project body if non-empty, else global body, else default
+ *
+ * A project file with only a `model:` inherits the global prompt; a project
+ * file with only a body inherits the global provider/thinking.
+ */
+function loadCommitConfig(projectRoot?: string): { model?: string; thinking?: string; systemPrompt: string } {
+	const globalParsed = tryReadCommitMd(path.join(getAgentDir(), "agents", "commit.md")) ?? {
+		model: undefined,
+		thinking: undefined,
+		body: "",
+	};
+
+	const projectParsed = projectRoot
+		? tryReadCommitMd(path.join(projectRoot, ".pi", "agents", "commit.md"))
+		: undefined;
+
+	const model = projectParsed?.model ?? globalParsed.model;
+	const thinking = projectParsed?.thinking ?? globalParsed.thinking;
+	const systemPrompt = projectParsed?.body || globalParsed.body || DEFAULT_SYSTEM_PROMPT;
+
+	return { model, thinking, systemPrompt };
 }
 
 /**
@@ -333,20 +383,22 @@ export default function (pi: ExtensionAPI) {
 			// Get the stat summary (always useful high-level context)
 			const statSummary = stagedCheck.stdout.trim();
 
-			// Load config
-			const config = loadCommitConfig();
-
-			// Determine model and thinking flags for pi invocation
-			const modelFlag = config.model ? `--model "${config.model}"` : "";
-			const thinkingFlag = config.thinking ? `--thinking ${config.thinking}` : "";
-
-			// Resolve git repo toplevel for cd-ing in the script
+			// Resolve git repo toplevel: used to cd in the script AND as the project
+			// root for per-project config overrides (.pi/agents/commit.md).
 			const toplevelResult = await pi.exec("git", ["rev-parse", "--show-toplevel"], { timeout: 5000 });
 			if (toplevelResult.code !== 0) {
 				ctx.ui.notify("Failed to find git repo root", "error");
 				return;
 			}
 			const gitRoot = toplevelResult.stdout.trim();
+
+			// Load config: project-local .pi/agents/commit.md overrides the global
+			// ~/.pi/agent/agents/commit.md, merged field by field.
+			const config = loadCommitConfig(gitRoot);
+
+			// Determine model and thinking flags for pi invocation
+			const modelFlag = config.model ? `--model "${config.model}"` : "";
+			const thinkingFlag = config.thinking ? `--thinking ${config.thinking}` : "";
 
 			// Determine editor
 			let editor = process.env.EDITOR || process.env.VISUAL;

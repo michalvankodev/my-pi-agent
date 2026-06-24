@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.79.3",
+  "lastChangelogVersion": "0.80.2",
   "defaultProvider": "zai",
   "defaultModel": "glm-5.2",
   "defaultThinkingLevel": "medium",
@@ -24,14 +24,14 @@
     "npm:pi-desktop-notify",
     "npm:@llblab/pi-telegram",
     "npm:pi-annotate",
-    "npm:@narumitw/pi-goal"
+    "npm:@narumitw/pi-goal",
+    "npm:pi-provider-litellm"
   ],
   "powerline": "default",
   "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",
   "quietStartup": true,
   "enabledModels": [
     "zai/glm-5.2:medium",
-    "openai-codex/gpt-5.5:low",
     "llama-cpp/Qwen3.6-35B-A3B-GGUF:medium"
   ],
   "hideThinkingBlock": false,
