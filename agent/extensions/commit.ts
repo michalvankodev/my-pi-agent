@@ -14,7 +14,8 @@
  * 2. Condenses the diff programmatically (collapses large deletions, keeps additions)
  * 3. Writes condensed diff + stat + session context + system prompt to temp files
  * 4. Spawns a new zellij pane immediately with a shell script that:
- *    a. Pipes prompt into `pi -p --no-session --no-extensions --no-tools --no-context-files` → COMMIT_EDITMSG
+ *    a. Pipes prompt into `pi -p --no-session --no-tools --no-context-files` → COMMIT_EDITMSG
+ *       (extensions are NOT disabled, so provider extensions like litellm still load; --no-tools keeps it tool-free)
  *    b. Opens $EDITOR on COMMIT_EDITMSG for review
  *    c. Commits with the final message (unless emptied)
  *
@@ -491,7 +492,6 @@ CAT_PID=\$!
 START=\$(date +%s)
 cat "${promptFile}" | pi -p \\
   --no-session \\
-  --no-extensions \\
   --no-tools \\
   --no-context-files \\
   ${modelFlag} \\
