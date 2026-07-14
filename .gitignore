@@ -48,3 +48,5 @@ agent/locks.json
 agent/tmp/
 agent/trust.json
 agent/litellm-models.json
+.pi-subagents
+agent/run-history.jsonl

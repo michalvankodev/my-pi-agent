@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.80.2",
   "defaultProvider": "zai",
   "defaultModel": "glm-5.2",
+  "lastChangelogVersion": "0.80.6",
   "defaultThinkingLevel": "medium",
   "steeringMode": "all",
   "followUpMode": "one-at-a-time",
@@ -20,12 +20,13 @@
     "npm:@aliou/pi-guardrails",
     "npm:pi-powerline-footer",
     "npm:pi-zai-tools",
-    "npm:pi-ask-user",
     "npm:pi-desktop-notify",
     "npm:@llblab/pi-telegram",
     "npm:pi-annotate",
     "npm:@narumitw/pi-goal",
-    "npm:pi-provider-litellm"
+    "npm:pi-provider-litellm",
+    "npm:@juicesharp/rpiv-ask-user-question",
+    "npm:pi-subagents"
   ],
   "powerline": "default",
   "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",
@@ -35,5 +36,16 @@
     "llama-cpp/Qwen3.6-35B-A3B-GGUF:medium"
   ],
   "hideThinkingBlock": false,
-  "treeFilterMode": "no-tools"
+  "treeFilterMode": "no-tools",
+  "subagents": {
+    "defaultModel": "zai/glm-5.2",
+    "agentOverrides": {
+      "scout": {
+        "model": "zai/glm-4.7"
+      },
+      "context-builder": {
+        "model": "zai/glm-4.7"
+      }
+    }
+  }
 }
