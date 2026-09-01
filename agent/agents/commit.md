@@ -1,5 +1,5 @@
 ---
-model: zai/glm-4.5-air
+model: zai/glm-5.3-flash
 thinking: off
 ---
 

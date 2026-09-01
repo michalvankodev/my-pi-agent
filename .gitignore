@@ -5,6 +5,12 @@ web-search.json
 # Transient session data (per-project, auto-generated, can be large)
 agent/sessions/
 
+# Subagent mission records (local project paths, prompt-derived content)
+agent/missions/
+
+# Extension message inboxes (transient, auto-generated)
+agent/powerline-footer/
+
 # Debug logs
 agent/*-debug.log
 agent/*-crash.log

@@ -1,8 +1,8 @@
 {
   "defaultProvider": "zai",
-  "defaultModel": "glm-5.2",
-  "lastChangelogVersion": "0.80.6",
-  "defaultThinkingLevel": "medium",
+  "defaultModel": "glm-5.3",
+  "lastChangelogVersion": "0.84.4",
+  "defaultThinkingLevel": "high",
   "steeringMode": "all",
   "followUpMode": "one-at-a-time",
   "transport": "auto",
@@ -21,7 +21,6 @@
     "npm:pi-powerline-footer",
     "npm:pi-zai-tools",
     "npm:pi-desktop-notify",
-    "npm:@llblab/pi-telegram",
     "npm:pi-annotate",
     "npm:@narumitw/pi-goal",
     "npm:pi-provider-litellm",
@@ -32,13 +31,14 @@
   "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",
   "quietStartup": true,
   "enabledModels": [
-    "zai/glm-5.2:medium",
+    "zai/glm-5.3:high",
+    "zai/glm-5.3-flash:high",
     "llama-cpp/Qwen3.6-35B-A3B-GGUF:medium"
   ],
-  "hideThinkingBlock": false,
+  "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "subagents": {
-    "defaultModel": "zai/glm-5.2",
+    "defaultModel": "zai/glm-5.3",
     "agentOverrides": {
       "scout": {
         "model": "zai/glm-4.7"
