@@ -25,7 +25,8 @@
     "npm:@narumitw/pi-goal",
     "npm:pi-provider-litellm",
     "npm:@juicesharp/rpiv-ask-user-question",
-    "npm:pi-subagents"
+    "npm:pi-subagents",
+    "npm:pi-mcp-adapter"
   ],
   "powerline": "default",
   "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",

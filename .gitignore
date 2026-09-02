@@ -56,3 +56,5 @@ agent/trust.json
 agent/litellm-models.json
 .pi-subagents
 agent/run-history.jsonl
+agent/mcp-cache.json
+agent/mcp-npx-cache.json
