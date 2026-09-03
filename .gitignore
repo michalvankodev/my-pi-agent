@@ -58,3 +58,5 @@ agent/litellm-models.json
 agent/run-history.jsonl
 agent/mcp-cache.json
 agent/mcp-npx-cache.json
+agent/mcp-onboarding.json
+agent/models-store.json

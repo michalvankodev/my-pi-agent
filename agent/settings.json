@@ -1,52 +1,51 @@
 {
-  "defaultProvider": "zai",
-  "defaultModel": "glm-5.3",
-  "lastChangelogVersion": "0.84.4",
-  "defaultThinkingLevel": "high",
-  "steeringMode": "all",
-  "followUpMode": "one-at-a-time",
-  "transport": "auto",
-  "theme": "light",
-  "tools": [
-    "read",
-    "bash",
-    "edit",
-    "write",
-    "grep",
-    "find",
-    "ls"
-  ],
-  "packages": [
-    "npm:@aliou/pi-guardrails",
-    "npm:pi-powerline-footer",
-    "npm:pi-zai-tools",
-    "npm:pi-desktop-notify",
-    "npm:pi-annotate",
-    "npm:@narumitw/pi-goal",
-    "npm:pi-provider-litellm",
-    "npm:@juicesharp/rpiv-ask-user-question",
-    "npm:pi-subagents",
-    "npm:pi-mcp-adapter"
-  ],
-  "powerline": "default",
-  "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",
-  "quietStartup": true,
-  "enabledModels": [
-    "zai/glm-5.3:high",
-    "zai/glm-5.3-flash:high",
-    "llama-cpp/Qwen3.6-35B-A3B-GGUF:medium"
-  ],
-  "hideThinkingBlock": true,
-  "treeFilterMode": "no-tools",
-  "subagents": {
-    "defaultModel": "zai/glm-5.3",
-    "agentOverrides": {
-      "scout": {
-        "model": "zai/glm-4.7"
-      },
-      "context-builder": {
-        "model": "zai/glm-4.7"
-      }
+    "defaultProvider": "zai",
+    "defaultModel": "glm-5.3",
+    "lastChangelogVersion": "0.84.4",
+    "defaultThinkingLevel": "high",
+    "steeringMode": "all",
+    "followUpMode": "one-at-a-time",
+    "transport": "auto",
+    "theme": "light",
+    "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls"
+    ],
+    "packages": [
+        "npm:@aliou/pi-guardrails",
+        "npm:pi-powerline-footer",
+        "npm:pi-zai-tools",
+        "npm:pi-desktop-notify",
+        "npm:pi-annotate",
+        "npm:@narumitw/pi-goal",
+        "npm:@juicesharp/rpiv-ask-user-question",
+        "npm:pi-subagents",
+        "npm:pi-mcp-adapter"
+    ],
+    "powerline": "default",
+    "workingVibeModel": "llama-cpp/Qwen3.6-35B-A3B-GGUF",
+    "quietStartup": true,
+    "enabledModels": [
+        "zai/glm-5.3:high",
+        "zai/glm-5.3-flash:high",
+        "llama-cpp/Qwen3.6-35B-A3B-GGUF:medium"
+    ],
+    "hideThinkingBlock": true,
+    "treeFilterMode": "no-tools",
+    "subagents": {
+        "defaultModel": "zai/glm-5.3",
+        "agentOverrides": {
+            "scout": {
+                "model": "zai/glm-5.3-flash"
+            },
+            "context-builder": {
+                "model": "zai/glm-5.3-flash"
+            }
+        }
     }
-  }
 }
